@@ -201,7 +201,7 @@ solrctl instancedir --get <collection> /tmp/<collection>
 
 ### 7.4 Query Slowness / Performance Issues
 
-* Capture full query and retry with `&debugQuery=true`
+* Capture full query and retry with `&debug=all` or for old SOLR versions`&debugQuery=true` as specified in https://solr.apache.org/guide/solr/latest/query-guide/common-query-parameters.html#debug-parameter
 * JVM pressure:
 
 ```bash
@@ -345,7 +345,7 @@ This checklist provides a condensed guide for Frontline Engineers to follow befo
 
 #### Query Slowness (Read Impact)
 
-* [ ] **Explain Plan:** Retry the query with `&debugQuery=true`.
+* [ ] **Explain Plan:** Retry the query with `&debug=all` or for old SOLR versions`&debugQuery=true`.
 * [ ] **GC Pressure:** Check for "Stop-the-World" pauses: `jstat -gcutil <PID> 1s 10`.
 
 #### Service Down

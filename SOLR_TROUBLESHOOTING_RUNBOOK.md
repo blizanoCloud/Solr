@@ -286,12 +286,165 @@ curl -k --negotiate -u : "http://<host>:** solr_http_port** or ** solr_https_por
 
 ---
 
-## 12. Best Practices & References
+## 11. Best Practices & References
 
 * Separate Solr-Infra from custom Solr
 * Keep shard counts reasonable
 * Monitor document count per shard
 * Always backup before destructive actions
+
+---
+
+## 12. Java GC / OOM / Memory Leak Issues (ENGESC Mandatory)
+
+This section applies when Solr exhibits **GC pressure**, **OutOfMemoryErrors**, or **progressive memory growth**. These scenarios require **Engineering (ENG) involvement** and must meet the **ENGESC data collection standard**.
+
+---
+
+### 12.1 Typical Symptoms
+
+* Repeated or long **Stop-The-World (STW)** GC pauses
+* `java.lang.OutOfMemoryError` (Heap, Metaspace, Direct Memory)
+* Solr process restarts or is killed by the OS OOM killer
+* Severe query or indexing slowness without explicit Solr errors
+* Memory usage continuously increases after restarts
+
+---
+
+### 12.2 Mandatory JVM & GC Validation
+
+Run the following commands on the affected Solr role:
+
+```bash
+jcmd <PID> VM.flags
+jcmd <PID> VM.system_properties
+````
+
+Verify:
+
+* `-Xms` and `-Xmx` are equal
+* Heap size is appropriate for shard count and workload
+* GC algorithm is explicitly defined (G1GC recommended)
+
+GC pressure check:
+
+```bash
+jstat -gcutil <PID> 1s 10
+```
+
+Indicators of concern:
+
+* Old Gen consistently above 80%
+* Frequent Full GCs
+* GC time dominating application runtime
+
+---
+
+### 12.3 Mandatory ENGESC Evidence
+
+The following artifacts **must be attached** to any ENG escalation involving GC, OOM, or memory leak concerns.
+
+#### GC Logs
+
+* Full `solr_gc.log`
+* Must cover the full incident window
+
+#### Thread Dumps (jstack)
+
+Capture **at least three** thread dumps, spaced ~10 seconds apart:
+
+```bash
+jstack -l <PID> > jstack_1.out
+sleep 10
+jstack -l <PID> > jstack_2.out
+sleep 10
+jstack -l <PID> > jstack_3.out
+```
+
+Purpose:
+
+* Correlate thread state with GC pauses
+* Identify blocked or stalled execution paths
+
+#### Heap Dump (HPROF)
+
+Required for leak and retention analysis:
+
+```bash
+jmap -dump:format=b,file=heapdump.hprof <PID>
+```
+
+Note:
+
+* Heap dumps are large; ensure sufficient disk space is available.
+
+#### Live Object Histogram (Optional but Recommended)
+
+```bash
+jmap -histo:live <PID> > jmap_histo.out
+```
+
+Useful for identifying:
+
+* Dominant object types
+* Unexpected object retention
+
+---
+
+### 12.4 Collection-Specific Memory Investigation
+
+If the issue is isolated to **specific collections or shards**, include the following:
+
+* Affected collection name(s)
+* Shard and replica details
+* Whether the issue follows leadership movement
+
+Extract collection configuration:
+
+```bash
+solrctl instancedir --get <collection> /tmp/<collection>
+```
+
+Attach:
+
+* `managed-schema` or `schema.xml`
+* `solrconfig.xml`
+
+Rationale:
+
+* High-cardinality fields
+* Large stored fields
+* Aggressive analyzers
+* Heavy faceting or sorting
+* Cache configurations
+
+Valid schemas can still be **memory intensive at scale**.
+
+---
+
+### 12.5 Engineering Analysis Scope
+
+Engineering uses the collected data to determine:
+
+* Heap sizing and GC tuning issues
+* Memory leaks or object retention patterns
+* Query or indexing paths causing memory pressure
+* Schema-driven memory amplification
+* Thread-to-GC correlation
+
+Incomplete JVM data will delay root cause analysis.
+
+---
+
+### 12.6 Immediate Escalation Criteria
+
+Raise an ENGESC immediately if:
+
+* OOM recurs after restarts
+* GC consumes a significant portion of runtime
+* Heap dump indicates continuous object growth
+* Issue impacts **Solr-Infra (Ranger / Atlas)**
+* Production availability or data integrity is at risk
 
 ---
 
@@ -347,6 +500,7 @@ This checklist provides a condensed guide for Frontline Engineers to follow befo
 
 * [ ] **Explain Plan:** Retry the query with `&debug=all` or for old SOLR versions`&debugQuery=true`.
 * [ ] **GC Pressure:** Check for "Stop-the-World" pauses: `jstat -gcutil <PID> 1s 10`.
+* [ ] Make use if Cloudera Manager charts for SOLR servers/service and collections statistics.
 
 #### Service Down
 

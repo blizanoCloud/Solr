@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Solr Cluster State Analyzer</title>
+  <!-- jQuery CDN -->
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #f4f6f8;
+      color: #333;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    h1 {
+      margin-bottom: 20px;
+      color: #2c3e50;
+    }
+
+    /* Upload Box */
+    .upload-card {
+      background: #ffffff;
+      padding: 25px;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+      margin-bottom: 25px;
+      text-align: center;
+      border: 2px dashed #cbd5e1;
+    }
+    .upload-card input[type="file"] {
+      display: none;
+    }
+    .file-label {
+      display: inline-block;
+      padding: 10px 20px;
+      background-color: #3498db;
+      color: white;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    .file-label:hover {
+      background-color: #2980b9;
+    }
+    #error-message {
+      color: #e74c3c;
+      margin-top: 15px;
+      display: none;
+      font-weight: 500;
+    }
+
+    /* Analysis Dashboard */
+    #dashboard {
+      display: none;
+    }
+
+    /* Summary Grid */
+    .summary-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-bottom: 25px;
+    }
+    .card {
+      background-color: #ffffff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+      border-left: 5px solid #3498db;
+    }
+    .card h3 {
+      margin: 0 0 10px 0;
+      font-size: 14px;
+      color: #7f8c8d;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .card .value {
+      font-size: 28px;
+      font-weight: bold;
+      color: #2c3e50;
+    }
+    .card-nodes { border-left-color: #2ecc71; }
+    .card-collections { border-left-color: #3498db; }
+    .card-shards { border-left-color: #9b59b6; }
+    .card-replicas { border-left-color: #e67e22; }
+
+    /* Live Nodes Box */
+    .nodes-section {
+      background: white;
+      padding: 15px 20px;
+      border-radius: 8px;
+      margin-bottom: 25px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    }
+    .node-tag {
+      display: inline-block;
+      background-color: #e8f8f5;
+      color: #117a65;
+      border: 1px solid #a3e4d7;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 500;
+      margin: 3px 2px;
+    }
+
+    /* Details Table & Expandable Rows */
+    .table-container {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+      overflow: hidden;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+    th, td {
+      padding: 12px 15px;
+      border-bottom: 1px solid #edf2f7;
+    }
+    th {
+      background-color: #f8fafc;
+      color: #475569;
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 12px;
+    }
+    
+    /* Sorting Header Styles */
+    th.sortable {
+      cursor: pointer;
+      user-select: none;
+      transition: background-color 0.15s ease;
+    }
+    th.sortable:hover {
+      background-color: #e2e8f0;
+    }
+    .sort-icon {
+      font-size: 11px;
+      color: #94a3b8;
+      margin-left: 4px;
+    }
+    th.asc .sort-icon::after { content: " ▲"; color: #1e293b; }
+    th.desc .sort-icon::after { content: " ▼"; color: #1e293b; }
+    
+    .coll-row {
+      cursor: pointer;
+      transition: background-color 0.15s ease;
+    }
+    .coll-row:hover {
+      background-color: #f1f5f9;
+    }
+    .expand-icon {
+      display: inline-block;
+      width: 15px;
+      font-weight: bold;
+      color: #64748b;
+      transition: transform 0.2s;
+    }
+    .expanded .expand-icon {
+      transform: rotate(90deg);
+    }
+
+    /* Sub-table styling for expanded details */
+    .details-row {
+      display: none;
+      background-color: #fafbfc;
+    }
+    .details-row td {
+      padding: 15px 25px;
+      border-bottom: 2px solid #e2e8f0;
+    }
+    .sub-table {
+      width: 100%;
+      margin-top: 8px;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      background: #ffffff;
+    }
+    .sub-table th {
+      background-color: #edf2f7;
+      color: #475569;
+      font-size: 11px;
+    }
+    .sub-table td {
+      padding: 8px 12px;
+      font-size: 13px;
+    }
+
+    /* Badges */
+    .badge {
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    .badge-green { background-color: #d4edda; color: #155724; }
+    .badge-red { background-color: #f8d7da; color: #721c24; }
+    .badge-gray { background-color: #e2e8f0; color: #475569; }
+    .badge-hdfs { background-color: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
+    .badge-leader { background-color: #fef3c7; color: #92400e; font-size: 10px; padding: 2px 5px; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>Solr Cluster State Analyzer</h1>
+
+  <!-- File Upload Area -->
+  <div class="upload-card">
+    <p style="margin-top:0; color:#64748b;">Select a Solr <code>clusterstate.out</code> or JSON response file to analyze.</p>
+    <label for="file-input" class="file-label">📁 Choose File</label>
+    <input type="file" id="file-input" accept=".out,.json,.txt">
+    <span id="file-name" style="margin-left: 10px; font-weight: 500;"></span>
+    <div id="error-message"></div>
+  </div>
+
+  <!-- Dashboard Section -->
+  <div id="dashboard">
+    <!-- Top Metrics -->
+    <div class="summary-cards">
+      <div class="card card-nodes">
+        <h3>Live Solr Nodes</h3>
+        <div class="value" id="metric-live-nodes">0</div>
+      </div>
+      <div class="card card-collections">
+        <h3>Total Collections</h3>
+        <div class="value" id="metric-collections">0</div>
+      </div>
+      <div class="card card-shards">
+        <h3>Total Shards</h3>
+        <div class="value" id="metric-shards">0</div>
+      </div>
+      <div class="card card-replicas">
+        <h3>Total Replicas</h3>
+        <div class="value" id="metric-replicas">0</div>
+      </div>
+    </div>
+
+    <!-- Active Nodes -->
+    <div class="nodes-section">
+      <h3 style="margin-top:0; font-size:16px;">Active Nodes</h3>
+      <div id="live-nodes-list"></div>
+    </div>
+
+    <!-- Collection Details Table -->
+    <div class="table-container">
+      <table id="collections-table">
+        <thead>
+          <tr>
+            <th style="width: 30px;"></th>
+            <th class="sortable" data-col="1">Collection Name <span class="sort-icon">↕</span></th>
+            <th class="sortable" data-col="2">Health <span class="sort-icon">↕</span></th>
+            <th class="sortable" data-col="3">Storage Type <span class="sort-icon">↕</span></th>
+            <th class="sortable" data-col="4">Config Set <span class="sort-icon">↕</span></th>
+            <th class="sortable" data-col="5">Shards <span class="sort-icon">↕</span></th>
+            <th class="sortable" data-col="6">Replicas <span class="sort-icon">↕</span></th>
+          </tr>
+        </thead>
+        <tbody id="collections-table-body">
+          <!-- Dynamically Populated -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+$(document).ready(function () {
+
+  // File Selector Listener
+  $('#file-input').on('change', function (event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    $('#file-name').text(file.name);
+    $('#error-message').hide().text('');
+
+    const reader = new FileReader();
+
+    reader.onload = function (e) {
+      let rawText = e.target.result;
+
+      try {
+        if (rawText.includes('{')) {
+          rawText = rawText.substring(rawText.indexOf('{'));
+        }
+
+        const data = JSON.parse(rawText);
+        parseAndRenderDashboard(data);
+      } catch (err) {
+        showError('Invalid file format or parsing error: ' + err.message);
+        $('#dashboard').hide();
+      }
+    };
+
+    reader.onerror = function () {
+      showError('Failed to read the file.');
+    };
+
+    reader.readAsText(file);
+  });
+
+  // Expandable Row Click Event
+  $('#collections-table-body').on('click', '.coll-row', function () {
+    $(this).toggleClass('expanded');
+    const targetId = $(this).data('target');
+    $('#' + targetId).toggle();
+  });
+
+  // Sort Handler for Collections Table
+  $('#collections-table').on('click', 'th.sortable', function () {
+    const th = $(this);
+    const table = th.closest('table');
+    const tbody = table.find('> tbody');
+    const colIndex = parseInt(th.data('col'));
+    const isAscending = !th.hasClass('asc');
+
+    // Reset sort indicators across siblings
+    table.find('th.sortable').removeClass('asc desc');
+    th.addClass(isAscending ? 'asc' : 'desc');
+
+    // Get paired rows ([mainRow, detailsRow])
+    const rows = tbody.find('tr.coll-row').get();
+    const rowPairs = rows.map(mainRow => {
+      const targetId = $(mainRow).data('target');
+      return {
+        main: mainRow,
+        details: document.getElementById(targetId)
+      };
+    });
+
+    rowPairs.sort((a, b) => {
+      const valA = $(a.main).children('td').eq(colIndex).text().trim().toLowerCase();
+      const valB = $(b.main).children('td').eq(colIndex).text().trim().toLowerCase();
+
+      // Check for numeric values
+      const numA = parseFloat(valA);
+      const numB = parseFloat(valB);
+
+      if (!isNaN(numA) && !isNaN(numB)) {
+        return isAscending ? numA - numB : numB - numA;
+      }
+
+      return isAscending ? valA.localeCompare(valB) : valB.localeCompare(valA);
+    });
+
+    // Re-attach paired rows in sorted order
+    $.each(rowPairs, function (i, pair) {
+      tbody.append(pair.main);
+      tbody.append(pair.details);
+    });
+  });
+
+  // Generic Sort Handler for Sub-tables (Shards)
+  $(document).on('click', '.sub-table th.sortable', function () {
+    const th = $(this);
+    const table = th.closest('table');
+    const tbody = table.find('tbody');
+    const colIndex = parseInt(th.data('col'));
+    const isAscending = !th.hasClass('asc');
+
+    table.find('th.sortable').removeClass('asc desc');
+    th.addClass(isAscending ? 'asc' : 'desc');
+
+    const rows = tbody.find('tr').get();
+
+    rows.sort((a, b) => {
+      const valA = $(a).children('td').eq(colIndex).text().trim().toLowerCase();
+      const valB = $(b).children('td').eq(colIndex).text().trim().toLowerCase();
+
+      const numA = parseFloat(valA);
+      const numB = parseFloat(valB);
+
+      if (!isNaN(numA) && !isNaN(numB)) {
+        return isAscending ? numA - numB : numB - numA;
+      }
+
+      return isAscending ? valA.localeCompare(valB) : valB.localeCompare(valA);
+    });
+
+    $.each(rows, function (i, row) {
+      tbody.append(row);
+    });
+  });
+
+  function parseAndRenderDashboard(data) {
+    const cluster = data.cluster || data; 
+    const collections = cluster.collections || {};
+    const liveNodes = cluster.live_nodes || [];
+
+    $('#live-nodes-list').empty();
+    $('#collections-table-body').empty();
+    $('#collections-table th.sortable').removeClass('asc desc');
+
+    // 1. Process Live Nodes
+    $('#metric-live-nodes').text(liveNodes.length);
+    if (liveNodes.length > 0) {
+      $.each(liveNodes, function (i, node) {
+        $('#live-nodes-list').append(`<span class="node-tag">🟢 ${node}</span> `);
+      });
+    } else {
+      $('#live-nodes-list').html('<em style="color:#e74c3c;">No live nodes reported.</em>');
+    }
+
+    // 2. Process Collections
+    const collectionNames = Object.keys(collections);
+    let totalShards = 0;
+    let totalReplicas = 0;
+    let collIndex = 0;
+
+    $('#metric-collections').text(collectionNames.length);
+
+    if (collectionNames.length === 0) {
+      $('#collections-table-body').append('<tr><td colspan="7" style="text-align:center;">No collections found.</td></tr>');
+    } else {
+      $.each(collections, function (collName, collDetails) {
+        collIndex++;
+        const shards = collDetails.shards || {};
+        const shardKeys = Object.keys(shards);
+        const shardCount = shardKeys.length;
+        let replicaCount = 0;
+        let isHDFS = false;
+
+        const rawCollString = JSON.stringify(collDetails).toLowerCase();
+        if (rawCollString.includes('hdfs://') || rawCollString.includes('hdfsdirectoryfactory')) {
+          isHDFS = true;
+        }
+
+        let subTableRows = '';
+
+        $.each(shards, function (shardName, shardDetails) {
+          const replicas = shardDetails.replicas || {};
+          const replicaKeys = Object.keys(replicas);
+          replicaCount += replicaKeys.length;
+
+          $.each(replicas, function (repKey, repDetails) {
+            if (repDetails.dataDir && repDetails.dataDir.toLowerCase().startsWith('hdfs://')) {
+              isHDFS = true;
+            }
+
+            const isLeader = repDetails.leader === 'true' ? '<span class="badge badge-leader">LEADER</span>' : '';
+            const nodeName = repDetails.node_name || 'N/A';
+            const baseUrl = repDetails.base_url ? `<a href="${repDetails.base_url}" target="_blank" style="color:#2563eb;">${repDetails.base_url}</a>` : 'N/A';
+            const coreName = repDetails.core || 'N/A';
+            const type = repDetails.type || 'N/A';
+            const state = repDetails.state || 'N/A';
+
+            subTableRows += `
+              <tr>
+                <td><strong>${shardName}</strong></td>
+                <td><code>${coreName}</code> ${isLeader}</td>
+                <td><span class="badge ${state === 'active' ? 'badge-green' : 'badge-red'}">${state}</span></td>
+                <td>${type}</td>
+                <td><code>${nodeName}</code></td>
+                <td>${baseUrl}</td>
+              </tr>
+            `;
+          });
+        });
+
+        totalShards += shardCount;
+        totalReplicas += replicaCount;
+
+        let healthBadge = `<span class="badge badge-gray">UNKNOWN</span>`;
+        if (collDetails.health === 'GREEN') healthBadge = `<span class="badge badge-green">GREEN</span>`;
+        if (collDetails.health === 'RED') healthBadge = `<span class="badge badge-red">RED</span>`;
+
+        const storageBadge = isHDFS 
+          ? `<span class="badge badge-hdfs">HDFS Storage</span>` 
+          : `<span class="badge badge-gray">Local Disk</span>`;
+
+        const rowId = `coll-detail-${collIndex}`;
+
+        const mainRow = `
+          <tr class="coll-row" data-target="${rowId}">
+            <td style="text-align:center;"><span class="expand-icon">▶</span></td>
+            <td><strong>${collName}</strong></td>
+            <td>${healthBadge}</td>
+            <td>${storageBadge}</td>
+            <td><code>${collDetails.configName || 'N/A'}</code></td>
+            <td>${shardCount}</td>
+            <td>${replicaCount}</td>
+          </tr>
+        `;
+
+        const detailsRow = `
+          <tr class="details-row" id="${rowId}">
+            <td colspan="7">
+              <div style="margin-bottom: 5px; font-weight: 600; color: #475569; font-size: 13px;">
+                Shard & Replica Node Mappings for <em>${collName}</em>:
+              </div>
+              <table class="sub-table">
+                <thead>
+                  <tr>
+                    <th class="sortable" data-col="0">Shard <span class="sort-icon">↕</span></th>
+                    <th class="sortable" data-col="1">Core Name <span class="sort-icon">↕</span></th>
+                    <th class="sortable" data-col="2">State <span class="sort-icon">↕</span></th>
+                    <th class="sortable" data-col="3">Type <span class="sort-icon">↕</span></th>
+                    <th class="sortable" data-col="4">Node Name <span class="sort-icon">↕</span></th>
+                    <th class="sortable" data-col="5">Base URL <span class="sort-icon">↕</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${subTableRows || '<tr><td colspan="6">No shard replicas mapped.</td></tr>'}
+                </tbody>
+              </table>
+            </td>
+          </tr>
+        `;
+
+        $('#collections-table-body').append(mainRow + detailsRow);
+      });
+    }
+
+    $('#metric-shards').text(totalShards);
+    $('#metric-replicas').text(totalReplicas);
+
+    $('#dashboard').fadeIn();
+  }
+
+  function showError(msg) {
+    $('#error-message').text(msg).show();
+  }
+});
+</script>
+
+</body>
+</html>
